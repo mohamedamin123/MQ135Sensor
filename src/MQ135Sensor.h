@@ -3,6 +3,8 @@
 
 #include "Arduino.h"
 
+enum GasType { GAS_CO2, GAS_NH3 };
+
 class MQ135Sensor {
   public:
     MQ135Sensor(int analogPin, float loadResistance = 10.0, float vSupply = 5.0);
@@ -15,6 +17,10 @@ class MQ135Sensor {
     float getR0();             // Résistance base (air propre)
     float getPPM_CO2();        // Estimation CO2 en ppm
     float getPPM_NH3();        // Estimation NH3 en ppm
+
+    // Méthodes supplémentaires pour gestion multiple gaz
+    float getGasConcentration(GasType gas);
+    bool detectGas(GasType gas, float threshold);
 
   private:
     int _analogPin;

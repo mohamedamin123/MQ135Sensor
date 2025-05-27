@@ -1,5 +1,7 @@
 #include "MQ135Sensor.h"
 
+enum GasType { GAS_CO2, GAS_NH3 };
+
 MQ135Sensor::MQ135Sensor(int analogPin, float loadResistance, float vSupply) {
   _analogPin = analogPin;
   _loadResistance = loadResistance;
@@ -10,32 +12,25 @@ MQ135Sensor::MQ135Sensor(int analogPin, float loadResistance, float vSupply) {
   pinMode(_analogPin, INPUT);
 }
 
-// Calibre la valeur base (analogique et Rs) en air propre
 void MQ135Sensor::calibrate(int samples, int delayMs) {
   _baseRawValue = readAverage(samples, delayMs);
   _r0 = (_vSupply * _loadResistance / sensorVoltage(_baseRawValue)) - _loadResistance;
 }
 
-// Lecture brute moyenne
 float MQ135Sensor::readRaw() {
   return readAverage(_numSamples, 20);
 }
 
-// Indice simple qualité air = différence brute avec base
 float MQ135Sensor::getAirQualityIndex() {
   float current = readRaw();
   return current - _baseRawValue;
 }
 
-// Calcul de la tension capteur à partir de la valeur analogique
 float MQ135Sensor::sensorVoltage(float analogValue) {
-  // ADC 10-bit par défaut (0-1023), adapter si 12 bits (ESP32)
-  // Exemple pour ESP32 ADC 12 bits (0-4095)
-  float adcMax = 4095.0; // changer à 1023 si Arduino UNO
+  float adcMax = 4095.0; // Adapter selon ADC (ESP32 ou Arduino UNO)
   return (analogValue / adcMax) * _vSupply;
 }
 
-// Calcul Rs : résistance du capteur à l'instant t (en kilo-ohms)
 float MQ135Sensor::getRs() {
   float analogVal = readRaw();
   float vSensor = sensorVoltage(analogVal);
@@ -47,31 +42,24 @@ float MQ135Sensor::getR0() {
   return _r0;
 }
 
-// Estimation ppm CO2 selon courbe datasheet (Rs/R0 vs ppm)
-// Formule log-log : log10(ppm) = m * log10(Rs/R0) + b
-// Valeurs approximatives issues du datasheet MQ135 (à calibrer)
 float MQ135Sensor::getPPM_CO2() {
   float rs_ro_ratio = getRs() / _r0;
-  float m = -0.42;  // pente approximative
-  float b = 1.92;   // intercept approximative
+  float m = -0.42;
+  float b = 1.92;
   float log_ppm = m * log10(rs_ro_ratio) + b;
   float ppm = pow(10, log_ppm);
-  if (ppm < 0) ppm = 0;
-  return ppm;
+  return (ppm < 0) ? 0 : ppm;
 }
 
-// Estimation ppm NH3 selon courbe datasheet MQ135
 float MQ135Sensor::getPPM_NH3() {
   float rs_ro_ratio = getRs() / _r0;
-  float m = -0.38;  // pente approximative
-  float b = 1.65;   // intercept approximative
+  float m = -0.38;
+  float b = 1.65;
   float log_ppm = m * log10(rs_ro_ratio) + b;
   float ppm = pow(10, log_ppm);
-  if (ppm < 0) ppm = 0;
-  return ppm;
+  return (ppm < 0) ? 0 : ppm;
 }
 
-// Lecture moyenne (private)
 float MQ135Sensor::readAverage(int samples, int delayMs) {
   long sum = 0;
   for (int i = 0; i < samples; i++) {
@@ -79,4 +67,39 @@ float MQ135Sensor::readAverage(int samples, int delayMs) {
     delay(delayMs);
   }
   return (float)sum / samples;
+}
+
+// --- Nouvelle méthode : retourne la concentration selon le gaz demandé ---
+float MQ135Sensor::getGasConcentration(GasType gas) {
+  switch (gas) {
+    case GAS_CO2:
+      return getPPM_CO2();
+    case GAS_NH3:
+      return getPPM_NH3();
+    default:
+      return 0;
+  }
+}
+
+// --- Nouvelle méthode : détecte si concentration dépasse seuil, affiche message ---
+bool MQ135Sensor::detectGas(GasType gas, float threshold) {
+  float concentration = getGasConcentration(gas);
+  if (concentration >= threshold) {
+    switch (gas) {
+      case GAS_CO2:
+        Serial.print("Attention : concentration de CO2 élevée détectée : ");
+        Serial.print(concentration);
+        Serial.println(" ppm");
+        break;
+      case GAS_NH3:
+        Serial.print("Attention : concentration de NH3 élevée détectée : ");
+        Serial.print(concentration);
+        Serial.println(" ppm");
+        break;
+      default:
+        Serial.println("Gaz inconnu détecté");
+    }
+    return true;
+  }
+  return false;
 }
