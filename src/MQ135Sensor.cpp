@@ -1,6 +1,5 @@
 #include "MQ135Sensor.h"
 
-enum GasType { GAS_CO2, GAS_NH3 };
 
 MQ135Sensor::MQ135Sensor(int analogPin, float loadResistance, float vSupply) {
   _analogPin = analogPin;
